@@ -1,8 +1,7 @@
 --[[
     BORRALHO AUTO JOINER V2
-    Compact UI (170px wide)
+    Compact 170px UI
     Tabs: Main | Logs | Settings
-    Features: Auto Join, Auto Spam Join, Min%, Spam Duration, API Key ready
 
     Loadstring:
     loadstring(game:HttpGet("https://raw.githubusercontent.com/ideBob/Borralho-Auto-Joiner-V2/main/BorralhoAutoJoinerV2.lua"))()
@@ -27,9 +26,10 @@ local spamConnection = nil
 local currentTab = "Main"
 local logs = {}
 local maxLogs = 60
+local isScanning = false
 
-local minPercent = 10          -- default Min%
-local spamDuration = 0.1      -- default spam join delay
+local minPercent = 10
+local spamDuration = 0.1
 
 --// UI
 local screenGui = Instance.new("ScreenGui")
@@ -40,8 +40,8 @@ screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 170, 0, 320)
-mainFrame.Position = UDim2.new(0.5, -85, 0.5, -160)
+mainFrame.Size = UDim2.new(0, 170, 0, 340)
+mainFrame.Position = UDim2.new(0.5, -85, 0.5, -170)
 mainFrame.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
@@ -56,7 +56,7 @@ mainStroke.Color = Color3.fromRGB(55, 55, 65)
 mainStroke.Thickness = 1.2
 mainStroke.Parent = mainFrame
 
--- Logo / Title area
+-- Logo
 local logoFrame = Instance.new("Frame")
 logoFrame.Size = UDim2.new(1, 0, 0, 38)
 logoFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
@@ -147,9 +147,23 @@ statusLabel.Font = Enum.Font.Gotham
 statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 statusLabel.Parent = mainContent
 
+local scanJoinBtn = Instance.new("TextButton")
+scanJoinBtn.Size = UDim2.new(1, 0, 0, 34)
+scanJoinBtn.Position = UDim2.new(0, 0, 0, 24)
+scanJoinBtn.BackgroundColor3 = Color3.fromRGB(35, 55, 85)
+scanJoinBtn.Text = "Scan & Join"
+scanJoinBtn.TextColor3 = Color3.fromRGB(180, 210, 255)
+scanJoinBtn.TextSize = 13
+scanJoinBtn.Font = Enum.Font.GothamBold
+scanJoinBtn.AutoButtonColor = false
+local sjc = Instance.new("UICorner")
+sjc.CornerRadius = UDim.new(0, 7)
+sjc.Parent = scanJoinBtn
+scanJoinBtn.Parent = mainContent
+
 local autoJoinBtn = Instance.new("TextButton")
-autoJoinBtn.Size = UDim2.new(1, 0, 0, 36)
-autoJoinBtn.Position = UDim2.new(0, 0, 0, 28)
+autoJoinBtn.Size = UDim2.new(1, 0, 0, 34)
+autoJoinBtn.Position = UDim2.new(0, 0, 0, 64)
 autoJoinBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
 autoJoinBtn.Text = "Auto Join"
 autoJoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -162,8 +176,8 @@ ajc.Parent = autoJoinBtn
 autoJoinBtn.Parent = mainContent
 
 local autoSpamBtn = Instance.new("TextButton")
-autoSpamBtn.Size = UDim2.new(1, 0, 0, 36)
-autoSpamBtn.Position = UDim2.new(0, 0, 0, 72)
+autoSpamBtn.Size = UDim2.new(1, 0, 0, 34)
+autoSpamBtn.Position = UDim2.new(0, 0, 0, 104)
 autoSpamBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
 autoSpamBtn.Text = "Auto Spam Join"
 autoSpamBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -177,7 +191,7 @@ autoSpamBtn.Parent = mainContent
 
 local tipLabel = Instance.new("TextLabel")
 tipLabel.Size = UDim2.new(1, 0, 0, 50)
-tipLabel.Position = UDim2.new(0, 0, 0, 120)
+tipLabel.Position = UDim2.new(0, 0, 0, 148)
 tipLabel.BackgroundTransparency = 1
 tipLabel.Text = "RightShift = Toggle UI\nJ = Auto Join\nDrag top to move"
 tipLabel.TextColor3 = Color3.fromRGB(100, 100, 110)
@@ -299,7 +313,7 @@ apiLabel.TextXAlignment = Enum.TextXAlignment.Left
 apiLabel.TextYAlignment = Enum.TextYAlignment.Top
 apiLabel.Parent = settingsContent
 
--- Floating toggle button
+-- Floating toggle
 local toggleButton = Instance.new("ImageButton")
 toggleButton.Name = "ToggleButton"
 toggleButton.Size = UDim2.new(0, 38, 0, 38)
@@ -332,7 +346,7 @@ toggleIcon.TextSize = 20
 toggleIcon.Font = Enum.Font.GothamBold
 toggleIcon.Parent = toggleButton
 
---// Functions
+--// Core Functions
 local function addLog(text, color)
     color = color or Color3.fromRGB(190, 190, 200)
     local timeStr = os.date("%H:%M:%S")
@@ -373,19 +387,78 @@ local function setTab(tab)
     settingsTabBtn.TextColor3 = tab == "Settings" and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(170, 170, 180)
 end
 
-local function updateStatus()
-    if isSpamJoinEnabled then
-        statusLabel.Text = "Status: Spam Join ON"
-    elseif isAutoJoinEnabled then
-        statusLabel.Text = "Status: Auto Join ON"
-    else
-        statusLabel.Text = "Status: Idle"
-    end
+local function updateStatus(text)
+    statusLabel.Text = "Status: " .. (text or "Idle")
+end
+
+-- Scan servers then join one
+local function scanAndJoin()
+    if isScanning then return end
+    isScanning = true
+    updateStatus("Scanning...")
+    addLog("Scanning servers...", Color3.fromRGB(120, 180, 255))
+    scanJoinBtn.Text = "Scanning..."
+    scanJoinBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+
+    task.spawn(function()
+        local servers = {}
+        local success, err = pcall(function()
+            local url = "https://games.roblox.com/v1/games/" .. PLACE_ID .. "/servers/Public?sortOrder=Asc&limit=100"
+            local response = game:HttpGet(url)
+            local data = HttpService:JSONDecode(response)
+
+            if data and data.data then
+                for _, v in pairs(data.data) do
+                    if v.playing and v.maxPlayers and v.playing < v.maxPlayers then
+                        table.insert(servers, {
+                            id = v.id,
+                            playing = v.playing,
+                            max = v.maxPlayers
+                        })
+                    end
+                end
+            end
+        end)
+
+        if not success then
+            addLog("Scan failed: " .. tostring(err), Color3.fromRGB(255, 90, 90))
+            updateStatus("Scan Failed")
+            scanJoinBtn.Text = "Scan & Join"
+            scanJoinBtn.BackgroundColor3 = Color3.fromRGB(35, 55, 85)
+            isScanning = false
+            return
+        end
+
+        addLog("Found " .. #servers .. " free servers", Color3.fromRGB(100, 220, 140))
+
+        if #servers > 0 then
+            local chosen = servers[math.random(1, #servers)]
+            addLog("Joining " .. string.sub(chosen.id, 1, 8) .. ".. (" .. chosen.playing .. "/" .. chosen.max .. ")", Color3.fromRGB(110, 190, 255))
+            updateStatus("Joining...")
+            scanJoinBtn.Text = "Joining..."
+
+            local tpSuccess, tpErr = pcall(function()
+                TeleportService:TeleportToPlaceInstance(PLACE_ID, chosen.id, LocalPlayer)
+            end)
+
+            if not tpSuccess then
+                addLog("Teleport failed: " .. tostring(tpErr), Color3.fromRGB(255, 90, 90))
+                updateStatus("Teleport Failed")
+            end
+        else
+            addLog("No free servers found", Color3.fromRGB(255, 170, 70))
+            updateStatus("No Servers")
+        end
+
+        scanJoinBtn.Text = "Scan & Join"
+        scanJoinBtn.BackgroundColor3 = Color3.fromRGB(35, 55, 85)
+        isScanning = false
+    end)
 end
 
 local function forceServerHop()
     local servers = {}
-    local success, err = pcall(function()
+    local success = pcall(function()
         local url = "https://games.roblox.com/v1/games/" .. PLACE_ID .. "/servers/Public?sortOrder=Asc&limit=100"
         local response = game:HttpGet(url)
         local data = HttpService:JSONDecode(response)
@@ -398,12 +471,7 @@ local function forceServerHop()
         end
     end)
 
-    if not success then
-        addLog("HTTP error", Color3.fromRGB(255, 90, 90))
-        return
-    end
-
-    if #servers > 0 then
+    if success and #servers > 0 then
         local chosen = servers[math.random(1, #servers)]
         addLog("Hop → " .. string.sub(chosen.id, 1, 7) .. "..", Color3.fromRGB(110, 190, 255))
         TeleportService:TeleportToPlaceInstance(PLACE_ID, chosen.id, LocalPlayer)
@@ -413,7 +481,7 @@ local function forceServerHop()
 end
 
 local function toggleAutoJoin()
-    if isSpamJoinEnabled then return end -- prevent both at once
+    if isSpamJoinEnabled then return end
 
     isAutoJoinEnabled = not isAutoJoinEnabled
 
@@ -421,6 +489,7 @@ local function toggleAutoJoin()
         autoJoinBtn.Text = "Auto Join: ON"
         autoJoinBtn.BackgroundColor3 = Color3.fromRGB(25, 110, 55)
         addLog("Auto Join ENABLED", Color3.fromRGB(70, 210, 110))
+        updateStatus("Auto Join ON")
 
         if serverHopConnection then serverHopConnection:Disconnect() end
         serverHopConnection = RunService.Heartbeat:Connect(function()
@@ -431,12 +500,12 @@ local function toggleAutoJoin()
         autoJoinBtn.Text = "Auto Join"
         autoJoinBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
         addLog("Auto Join DISABLED", Color3.fromRGB(210, 140, 70))
+        updateStatus("Idle")
         if serverHopConnection then
             serverHopConnection:Disconnect()
             serverHopConnection = nil
         end
     end
-    updateStatus()
 end
 
 local function toggleSpamJoin()
@@ -448,6 +517,7 @@ local function toggleSpamJoin()
         autoSpamBtn.Text = "Spam Join: ON"
         autoSpamBtn.BackgroundColor3 = Color3.fromRGB(120, 50, 30)
         addLog("Spam Join ENABLED (" .. spamDuration .. "s)", Color3.fromRGB(255, 140, 80))
+        updateStatus("Spam Join ON")
 
         if spamConnection then spamConnection:Disconnect() end
         spamConnection = RunService.Heartbeat:Connect(function()
@@ -458,15 +528,19 @@ local function toggleSpamJoin()
         autoSpamBtn.Text = "Auto Spam Join"
         autoSpamBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
         addLog("Spam Join DISABLED", Color3.fromRGB(210, 140, 70))
+        updateStatus("Idle")
         if spamConnection then
             spamConnection:Disconnect()
             spamConnection = nil
         end
     end
-    updateStatus()
 end
 
--- Save settings
+-- Buttons
+scanJoinBtn.MouseButton1Click:Connect(scanAndJoin)
+autoJoinBtn.MouseButton1Click:Connect(toggleAutoJoin)
+autoSpamBtn.MouseButton1Click:Connect(toggleSpamJoin)
+
 saveBtn.MouseButton1Click:Connect(function()
     local minVal = tonumber(minBox.Text)
     if minVal and minVal > 0 then
@@ -493,8 +567,6 @@ end)
 mainTabBtn.MouseButton1Click:Connect(function() setTab("Main") end)
 logsTabBtn.MouseButton1Click:Connect(function() setTab("Logs") end)
 settingsTabBtn.MouseButton1Click:Connect(function() setTab("Settings") end)
-autoJoinBtn.MouseButton1Click:Connect(toggleAutoJoin)
-autoSpamBtn.MouseButton1Click:Connect(toggleSpamJoin)
 
 -- Dragging
 local dragging = false
@@ -518,7 +590,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Toggle button drag + click
 local toggleDragging = false
 local tDragStart, tStartPos
 
@@ -556,7 +627,6 @@ UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
--- RGB animation
 task.spawn(function()
     while true do
         for i = 0, 1, 0.02 do
@@ -568,7 +638,7 @@ end)
 
 -- Init
 setTab("Main")
-updateStatus()
-addLog("Borralho loaded (170px)", Color3.fromRGB(90, 210, 150))
-addLog("API Key ready", Color3.fromRGB(130, 180, 130))
-print("[Borralho] Compact UI loaded")
+updateStatus("Idle")
+addLog("Borralho loaded", Color3.fromRGB(90, 210, 150))
+addLog("Scan & Join ready", Color3.fromRGB(120, 180, 255))
+print("[Borralho] Ready")
